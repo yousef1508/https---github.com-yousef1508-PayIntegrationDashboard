@@ -1,0 +1,170 @@
+@model PayrollIntegrationDashboard.Models.DashboardViewModel
+@using System.Text.Json
+
+@{
+    ViewData["Title"] = "Dashboard";
+
+    var labelsJson = JsonSerializer.Serialize(Model.HoursLabels);
+    var valuesJson = JsonSerializer.Serialize(Model.HoursValues);
+    var logs = Model.Logs;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="mb-0">Dashboard</h3>
+        <small class="text-muted">Monitor automated integrations between time tracking and payroll</small>
+    </div>
+    <div>
+        <form asp-action="Import" method="post" class="d-inline">
+            <button class="btn btn-outline-primary me-2">
+                <i class="bi bi-cloud-download me-1"></i> Import time data
+            </button>
+        </form>
+        <form asp-action="Export" method="post" class="d-inline">
+            <button class="btn btn-success">
+                <i class="bi bi-cloud-upload me-1"></i> Export to payroll
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card card-kpi p-3">
+            <div class="small text-muted">Total employees</div>
+            <div class="fs-4 fw-semibold">@Model.TotalEmployees</div>
+            <div class="small text-success">Synced from HR/time systems</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-kpi p-3">
+            <div class="small text-muted">Total hours (period)</div>
+            <div class="fs-4 fw-semibold">@Model.TotalHours</div>
+            <div class="small text-muted">Based on latest import</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-kpi p-3">
+            <div class="small text-muted">Failed exports</div>
+            <div class="fs-4 fw-semibold">@Model.FailedExports</div>
+            <form asp-action="Retry" method="post" class="mt-2">
+                <button class="btn btn-sm btn-outline-danger">
+                    <i class="bi bi-arrow-repeat me-1"></i>Retry queue
+                </button>
+            </form>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-kpi p-3">
+            <div class="small text-muted">Last run</div>
+            <div class="fs-6 fw-semibold">
+                @(Model.LastRun?.ToLocalTime().ToString("g") ?? "No runs yet")
+            </div>
+            <div class="small text-muted">Background job every 10 minutes</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-8">
+<div class="card p-3">
+    <h6 class="mb-1">Payroll history (last 7 days)</h6>
+    <small class="text-muted">Total imported hours per day</small>
+
+    <div class="chart-wrapper">
+        <canvas id="hoursChart"></canvas>
+    </div>
+</div>
+
+    </div>
+    <div class="col-lg-4">
+        <div class="card p-3 h-100">
+            <h6 class="mb-1">Integration log</h6>
+            <small class="text-muted">Recent import/export operations</small>
+            <div class="mt-2" style="max-height:260px; overflow:auto;">
+                <table class="table table-sm align-middle mb-0">
+                    <tbody>
+                    @foreach (var log in logs)
+                    {
+                        <tr>
+                            <td class="small text-muted" style="white-space:nowrap;">
+                                @log.RunAt.ToLocalTime().ToString("dd.MM HH:mm")
+                            </td>
+                            <td class="small">@log.Operation</td>
+                            <td>
+                                @if (log.Success)
+                                {
+                                    <span class="badge bg-success">OK</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger">Fail</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card p-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div>
+            <h6 class="mb-0">Recent employees</h6>
+            <small class="text-muted">Aggregated hours ready for export</small>
+        </div>
+        <a asp-action="Create" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-plus-circle me-1"></i>Manual entry
+        </a>
+    </div>
+
+    <table class="table table-hover align-middle mb-0">
+        <thead>
+            <tr>
+                <th>Employee ID</th>
+                <th>Total hours</th>
+                <th>Period</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var s in Model.Summaries)
+        {
+            <tr>
+                <td>@s.EmployeeId</td>
+                <td>@s.TotalHours</td>
+                <td>@s.Period</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const labels = @Html.Raw(labelsJson);
+        const values = @Html.Raw(valuesJson);
+
+        const ctx = document.getElementById('hoursChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Imported hours',
+                    data: values
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    </script>
+}
