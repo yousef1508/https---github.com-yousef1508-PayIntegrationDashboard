@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "E:\\PayrollDemo\\azets-payroll-integration-dashboard\\PayrollIntegrationDashboard\\PayrollIntegrationDashboard.csproj": {}
+    "E:\\azets-payroll-integration-dashboard\\PayrollIntegrationDashboard\\PayrollIntegrationDashboard.csproj": {}
   },
   "projects": {
-    "E:\\PayrollDemo\\azets-payroll-integration-dashboard\\PayrollIntegrationDashboard\\PayrollIntegrationDashboard.csproj": {
+    "E:\\azets-payroll-integration-dashboard\\PayrollIntegrationDashboard\\PayrollIntegrationDashboard.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "E:\\PayrollDemo\\azets-payroll-integration-dashboard\\PayrollIntegrationDashboard\\PayrollIntegrationDashboard.csproj",
+        "projectUniqueName": "E:\\azets-payroll-integration-dashboard\\PayrollIntegrationDashboard\\PayrollIntegrationDashboard.csproj",
         "projectName": "PayrollIntegrationDashboard",
-        "projectPath": "E:\\PayrollDemo\\azets-payroll-integration-dashboard\\PayrollIntegrationDashboard\\PayrollIntegrationDashboard.csproj",
+        "projectPath": "E:\\azets-payroll-integration-dashboard\\PayrollIntegrationDashboard\\PayrollIntegrationDashboard.csproj",
         "packagesPath": "C:\\Users\\youse\\.nuget\\packages\\",
-        "outputPath": "E:\\PayrollDemo\\azets-payroll-integration-dashboard\\PayrollIntegrationDashboard\\obj\\",
+        "outputPath": "E:\\azets-payroll-integration-dashboard\\PayrollIntegrationDashboard\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -49,6 +49,30 @@
       "frameworks": {
         "net10.0": {
           "targetAlias": "net10.0",
+          "dependencies": {
+            "HotChocolate.AspNetCore": {
+              "target": "Package",
+              "version": "[15.1.11, )"
+            },
+            "HotChocolate.Data.EntityFramework": {
+              "target": "Package",
+              "version": "[15.1.11, )"
+            },
+            "Microsoft.EntityFrameworkCore": {
+              "target": "Package",
+              "version": "[10.0.0, )"
+            },
+            "Microsoft.EntityFrameworkCore.Sqlite": {
+              "target": "Package",
+              "version": "[10.0.0, )"
+            },
+            "Microsoft.EntityFrameworkCore.Tools": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[10.0.0, )"
+            }
+          },
           "imports": [
             "net461",
             "net462",

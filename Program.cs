@@ -1,29 +1,57 @@
+using Microsoft.EntityFrameworkCore;
+using PayrollIntegrationDashboard.Data;
+using PayrollIntegrationDashboard.GraphQL;
+using PayrollIntegrationDashboard.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// MVC
 builder.Services.AddControllersWithViews();
+
+// EF Core + SQLite
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Domain services
+builder.Services.AddScoped<IntegrationService>();
+builder.Services.AddScoped<ValidationService>();
+builder.Services.AddHostedService<BackgroundSyncService>();
+
+// GraphQL (HotChocolate)
+builder.Services
+    .AddGraphQLServer()
+    .AddQueryType<Query>()
+    .AddMutationType<Mutation>()
+    .AddFiltering()
+    .AddSorting();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Ensure DB exists
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.EnsureCreated();
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
-app.UseRouting();
+app.UseStaticFiles();
 
+app.UseRouting();
 app.UseAuthorization();
 
-app.MapStaticAssets();
+// GraphQL endpoint
+app.MapGraphQL("/graphql");
 
+// MVC routing – dashboard as default page
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}")
-    .WithStaticAssets();
-
+    pattern: "{controller=Integration}/{action=Index}/{id?}");
 
 app.Run();
