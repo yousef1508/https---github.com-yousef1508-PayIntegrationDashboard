@@ -181,6 +181,40 @@ public class IntegrationService
     }
 
     // --------------------------------------------------------------------
+    // EMPLOYEE METRICS (for modal)
+    // --------------------------------------------------------------------
+
+    public async Task<EmployeeMetricsViewModel?> GetEmployeeMetricsAsync(int employeeId)
+    {
+        var summaries = await GetCurrentPayrollSummaryAsync();
+        var summary = summaries.FirstOrDefault(s => s.EmployeeId == employeeId);
+        if (summary == null)
+            return null;
+
+        const decimal taxRate = 0.32m;        // 32% tax assumption
+        const decimal commissionRate = 0.05m; // 5% company cut
+
+        var gross = summary.TotalPay;
+        var tax = gross * taxRate;
+        var commission = gross * commissionRate;
+        var net = gross - tax - commission;
+
+        return new EmployeeMetricsViewModel
+        {
+            EmployeeId = summary.EmployeeId,
+            Period = summary.Period,
+            TotalHours = summary.TotalHours,
+            HourlyRate = summary.HourlyRate,
+            GrossPay = gross,
+            TaxAmount = tax,
+            CommissionAmount = commission,
+            NetPay = net,
+            TaxRatePercent = taxRate * 100,
+            CommissionRatePercent = commissionRate * 100
+        };
+    }
+
+    // --------------------------------------------------------------------
     // EXPORT
     // --------------------------------------------------------------------
 

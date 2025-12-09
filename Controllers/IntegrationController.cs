@@ -63,4 +63,15 @@ public class IntegrationController : Controller
             return View(entry);
         }
     }
+
+    // JSON endpoint for modal metrics
+    [HttpGet]
+    public async Task<IActionResult> EmployeeMetrics(int id)
+    {
+        var metrics = await _service.GetEmployeeMetricsAsync(id);
+        if (metrics == null)
+            return NotFound();
+
+        return Json(metrics);
+    }
 }

@@ -8,7 +8,58 @@
     var labelsJson = JsonSerializer.Serialize(Model.HoursLabels);
     var valuesJson = JsonSerializer.Serialize(Model.HoursValues);
     var logs = Model.Logs;
+    var culture = CultureInfo.GetCultureInfo("nb-NO");
 }
+
+<style>
+    /* Modal overlay with blur */
+    .metrics-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.45);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        display: none;
+        align-items: center;
+        justify-content: flex-end;
+        padding-right: 3rem;
+        z-index: 1050;
+        transition: opacity 0.25s ease;
+    }
+
+    .metrics-overlay.show {
+        display: flex;
+    }
+
+    .metrics-card {
+        width: 360px;
+        max-width: 90vw;
+        background: #ffffff;
+        border-radius: 16px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+        padding: 20px 20px 16px;
+        animation: slideUpRight 0.25s ease-out;
+    }
+
+   @@keyframes slideUpRight {
+        from {
+            opacity: 0;
+            transform: translate(40px, 40px) scale(0.96);
+        }
+        to {
+            opacity: 1;
+            transform: translate(0, 0) scale(1);
+        }
+    }
+
+    .metrics-close-btn {
+        border: none;
+        background: transparent;
+        font-size: 1.2rem;
+        line-height: 1;
+        cursor: pointer;
+    }
+</style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
@@ -59,7 +110,7 @@
         <div class="card card-kpi p-3">
             <div class="small text-muted">Estimated payout (period)</div>
             <div class="fs-4 fw-semibold">
-                @Model.TotalPayout.ToString("C0", CultureInfo.GetCultureInfo("nb-NO"))
+                @Model.TotalPayout.ToString("C0", culture)
             </div>
             <div class="small text-muted">Basert på timesatser per ansatt</div>
         </div>
@@ -72,7 +123,7 @@
             <h6 class="mb-1">Payroll history (last 7 days)</h6>
             <small class="text-muted">Total imported hours per day</small>
 
-            <div class="chart-wrapper">
+            <div class="chart-wrapper mt-3">
                 <canvas id="hoursChart"></canvas>
             </div>
         </div>
@@ -135,13 +186,19 @@
         @foreach (var s in Model.Summaries)
         {
             <tr>
-                <td>@s.EmployeeId</td>
+                <td>
+                    <button type="button"
+                            class="btn btn-link p-0 employee-metrics-link"
+                            data-employee-id="@s.EmployeeId">
+                        @s.EmployeeId
+                    </button>
+                </td>
                 <td>@s.TotalHours</td>
                 <td>
-                    @s.HourlyRate.ToString("C0", CultureInfo.GetCultureInfo("nb-NO"))
+                    @s.HourlyRate.ToString("C0", culture)
                 </td>
                 <td>
-                    @s.TotalPay.ToString("C0", CultureInfo.GetCultureInfo("nb-NO"))
+                    @s.TotalPay.ToString("C0", culture)
                 </td>
                 <td>@s.Period</td>
             </tr>
@@ -150,9 +207,53 @@
     </table>
 </div>
 
+<!-- Metrics Modal -->
+<div id="metricsOverlay" class="metrics-overlay">
+    <div class="metrics-card">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+                <div class="small text-muted">Employee</div>
+                <div class="fw-semibold" id="metricsEmployeeId"></div>
+                <div class="small text-muted" id="metricsPeriod"></div>
+            </div>
+            <button type="button" class="metrics-close-btn" id="metricsCloseBtn" aria-label="Close">
+                &times;
+            </button>
+        </div>
+
+        <div class="small mb-2">
+            <div>Total hours: <span id="metricsHours"></span></div>
+            <div>Hourly rate: <span id="metricsRate"></span></div>
+            <div>Gross pay: <span id="metricsGross"></span></div>
+        </div>
+
+        <div class="chart-wrapper mt-2" style="height:220px;">
+            <canvas id="metricsPie"></canvas>
+        </div>
+
+        <div class="mt-3 small text-muted">
+            <p class="mb-1">
+                <strong>Take-home (net):</strong>
+                <span id="metricsNet"></span> – what the employee actually receives.
+            </p>
+            <p class="mb-1">
+                <strong>Tax:</strong>
+                <span id="metricsTax"></span>
+                (<span id="metricsTaxRate"></span> %) – estimated income tax.
+            </p>
+            <p class="mb-0">
+                <strong>Company cut:</strong>
+                <span id="metricsCommission"></span>
+                (<span id="metricsCommissionRate"></span> %) – margin/fee retained by the company.
+            </p>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
+        // Main bar chart
         const labels = @Html.Raw(labelsJson);
         const values = @Html.Raw(valuesJson);
 
@@ -172,6 +273,90 @@
                 scales: {
                     y: { beginAtZero: true }
                 }
+            }
+        });
+
+        // Modal + pie chart logic
+        const overlay = document.getElementById('metricsOverlay');
+        const closeBtn = document.getElementById('metricsCloseBtn');
+        let metricsChart = null;
+
+        function formatCurrency(value) {
+            // crude NOK format; server already formats for main dashboard
+            return new Intl.NumberFormat('nb-NO', {
+                style: 'currency',
+                currency: 'NOK',
+                maximumFractionDigits: 0
+            }).format(value);
+        }
+
+        async function openMetricsModal(employeeId) {
+            try {
+                const res = await fetch(`/Integration/EmployeeMetrics?id=${employeeId}`);
+                if (!res.ok) return;
+
+                const data = await res.json();
+
+                // Fill text fields
+                document.getElementById('metricsEmployeeId').textContent = data.employeeId;
+                document.getElementById('metricsPeriod').textContent = `Period ${data.period}`;
+                document.getElementById('metricsHours').textContent = data.totalHours;
+                document.getElementById('metricsRate').textContent = formatCurrency(data.hourlyRate);
+                document.getElementById('metricsGross').textContent = formatCurrency(data.grossPay);
+                document.getElementById('metricsNet').textContent = formatCurrency(data.netPay);
+                document.getElementById('metricsTax').textContent = formatCurrency(data.taxAmount);
+                document.getElementById('metricsCommission').textContent = formatCurrency(data.commissionAmount);
+                document.getElementById('metricsTaxRate').textContent = data.taxRatePercent;
+                document.getElementById('metricsCommissionRate').textContent = data.commissionRatePercent;
+
+                const ctxPie = document.getElementById('metricsPie').getContext('2d');
+
+                if (metricsChart) {
+                    metricsChart.destroy();
+                }
+
+                metricsChart = new Chart(ctxPie, {
+                    type: 'pie',
+                    data: {
+                        labels: ['Take home (net)', 'Tax', 'Company cut'],
+                        datasets: [{
+                            data: [data.netPay, data.taxAmount, data.commissionAmount]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+
+                overlay.classList.add('show');
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function closeMetricsModal() {
+            overlay.classList.remove('show');
+        }
+
+        document.querySelectorAll('.employee-metrics-link').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.getAttribute('data-employee-id');
+                openMetricsModal(id);
+            });
+        });
+
+        closeBtn.addEventListener('click', closeMetricsModal);
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                closeMetricsModal();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeMetricsModal();
             }
         });
     </script>
