@@ -20,4 +20,10 @@ public class Query
 
     public Task<List<PayrollSummary>> GetPayrollSummaries([Service] IntegrationService service) =>
         service.GetCurrentPayrollSummaryAsync();
+
+    // Used by the UI modal via GraphQL
+    public Task<EmployeeMetricsViewModel?> GetEmployeeMetrics(
+        int employeeId,
+        [Service] IntegrationService service) =>
+        service.GetEmployeeMetricsAsync(employeeId);
 }

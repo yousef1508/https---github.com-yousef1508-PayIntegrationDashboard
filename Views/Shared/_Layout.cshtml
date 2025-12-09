@@ -168,9 +168,9 @@
 
             <div class="nav-section">Tools</div>
             <a asp-controller="Integration" asp-action="GraphQLTools" class="@(ViewContext.RouteData.Values["action"]?.ToString() == "GraphQLTools" ? "active" : "")">
-                <i class="bi bi-graph-up"></i>GraphQL API
+                <i class="bi bi-graph-up"></i>Data API (GraphQL)
             </a>
-            <a href="/health" target="_blank">
+            <a asp-controller="Health" asp-action="Index">
                 <i class="bi bi-heart-pulse"></i>Health check
             </a>
         </aside>

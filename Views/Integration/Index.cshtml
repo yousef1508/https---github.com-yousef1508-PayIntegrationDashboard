@@ -366,12 +366,42 @@
 
         async function openMetricsCard(employeeId) {
             try {
-                const res = await fetch(`/Integration/EmployeeMetrics?id=${employeeId}`);
-                if (!res.ok) {
-                    console.error('EmployeeMetrics request failed', res.status);
+                // Use GraphQL as data source for the modal
+                const gqlRes = await fetch('/graphql', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: `
+                            query ($id: Int!) {
+                              employeeMetrics(employeeId: $id) {
+                                employeeId
+                                period
+                                totalHours
+                                hourlyRate
+                                grossPay
+                                netPay
+                                taxAmount
+                                commissionAmount
+                                taxRatePercent
+                                commissionRatePercent
+                                averageHoursPerDay
+                                trendLabel
+                              }
+                            }
+                        `,
+                        variables: { id: Number(employeeId) }
+                    })
+                });
+
+                const json = await gqlRes.json();
+                if (!json.data || !json.data.employeeMetrics) {
+                    console.error('No employeeMetrics returned from GraphQL', json);
                     return;
                 }
-                const data = await res.json();
+
+                const data = json.data.employeeMetrics;
 
                 // build card from template
                 const fragment = cardTemplate.content.cloneNode(true);
@@ -452,7 +482,7 @@
                     });
                 }
 
-                // chart + sliders (wrapped so errors don't kill the card)
+                // chart + sliders
                 try {
                     const ctxPie = card.querySelector('[data-role="pie"]').getContext('2d');
                     const baseGross = data.grossPay;
