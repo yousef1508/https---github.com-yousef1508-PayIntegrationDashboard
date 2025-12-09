@@ -15,6 +15,17 @@ public class IntegrationService
     private readonly HttpClient _http;
     private readonly ILogger<IntegrationService> _logger;
 
+    // Simple hourly rate table (could come from DB in a real system)
+    private readonly Dictionary<int, decimal> _employeeRates = new()
+    {
+        { 1, 250m },
+        { 2, 260m },
+        { 3, 275m },
+        { 4, 280m },
+        { 5, 290m }
+        // others will use default 280
+    };
+
     public IntegrationService(
         AppDbContext db,
         ValidationService validator,
@@ -26,14 +37,16 @@ public class IntegrationService
         _http = new HttpClient();
     }
 
-    // DASHBOARD MODEL ----------------------------------------------------
+    // --------------------------------------------------------------------
+    // DASHBOARD MODEL
+    // --------------------------------------------------------------------
 
     public async Task<DashboardViewModel> GetDashboardAsync()
     {
         var summaries = await GetCurrentPayrollSummaryAsync();
         var logs = await GetLogsAsync();
 
-        // last 7 days hours for chart
+        // Last 7 days for chart
         var from = DateTime.Today.AddDays(-6);
         var daily = await _db.TimeEntries
             .Where(t => t.Date >= from)
@@ -61,11 +74,14 @@ public class IntegrationService
             FailedExports = await _db.FailedExports.CountAsync(),
             LastRun = logs.FirstOrDefault()?.RunAt,
             HoursLabels = labels,
-            HoursValues = values
+            HoursValues = values,
+            TotalPayout = summaries.Sum(s => s.TotalPay)
         };
     }
 
-    // IMPORT -------------------------------------------------------------
+    // --------------------------------------------------------------------
+    // IMPORT
+    // --------------------------------------------------------------------
 
     public async Task<ImportResult> ImportTimeEntriesAsync()
     {
@@ -128,25 +144,45 @@ public class IntegrationService
         public int Id { get; set; }
     }
 
-    // SUMMARY ------------------------------------------------------------
+    // --------------------------------------------------------------------
+    // SUMMARY (includes money)
+    // --------------------------------------------------------------------
 
     public async Task<List<PayrollSummary>> GetCurrentPayrollSummaryAsync()
     {
         var now = DateTime.Now;
         var period = $"{now:yyyy-MM}";
 
-        return await _db.TimeEntries
+        // First: let EF / SQL do grouping + sum, then materialize
+        var grouped = await _db.TimeEntries
             .GroupBy(t => t.EmployeeId)
-            .Select(g => new PayrollSummary
+            .Select(g => new
             {
                 EmployeeId = g.Key,
-                TotalHours = g.Sum(x => x.Hours),
-                Period = period
+                TotalHours = g.Sum(x => x.Hours)
             })
             .ToListAsync();
+
+        // Second: in memory, apply hourly rates and compute pay
+        var summaries = grouped.Select(g =>
+        {
+            var rate = _employeeRates.TryGetValue(g.EmployeeId, out var r) ? r : 280m;
+            return new PayrollSummary
+            {
+                EmployeeId = g.EmployeeId,
+                TotalHours = g.TotalHours,
+                Period = period,
+                HourlyRate = rate,
+                TotalPay = rate * (decimal)g.TotalHours
+            };
+        }).ToList();
+
+        return summaries;
     }
 
-    // EXPORT -------------------------------------------------------------
+    // --------------------------------------------------------------------
+    // EXPORT
+    // --------------------------------------------------------------------
 
     public async Task<ExportResult> ExportPayrollAsync()
     {
@@ -210,7 +246,9 @@ public class IntegrationService
         return retried;
     }
 
-    // MANUAL ADD ---------------------------------------------------------
+    // --------------------------------------------------------------------
+    // MANUAL ADD
+    // --------------------------------------------------------------------
 
     public async Task ManualAddAsync(TimeEntry entry)
     {
@@ -224,7 +262,9 @@ public class IntegrationService
         await AddLogAsync("ManualAdd", true, $"Manual entry for employee {entry.EmployeeId}");
     }
 
-    // LOGS ---------------------------------------------------------------
+    // --------------------------------------------------------------------
+    // LOGS
+    // --------------------------------------------------------------------
 
     public Task<List<IntegrationRunLog>> GetLogsAsync() =>
         _db.IntegrationRunLogs

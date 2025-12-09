@@ -1,5 +1,6 @@
 @model PayrollIntegrationDashboard.Models.DashboardViewModel
 @using System.Text.Json
+@using System.Globalization
 
 @{
     ViewData["Title"] = "Dashboard";
@@ -56,26 +57,25 @@
     </div>
     <div class="col-md-3">
         <div class="card card-kpi p-3">
-            <div class="small text-muted">Last run</div>
-            <div class="fs-6 fw-semibold">
-                @(Model.LastRun?.ToLocalTime().ToString("g") ?? "No runs yet")
+            <div class="small text-muted">Estimated payout (period)</div>
+            <div class="fs-4 fw-semibold">
+                @Model.TotalPayout.ToString("C0", CultureInfo.GetCultureInfo("nb-NO"))
             </div>
-            <div class="small text-muted">Background job every 10 minutes</div>
+            <div class="small text-muted">Basert på timesatser per ansatt</div>
         </div>
     </div>
 </div>
 
 <div class="row g-4 mb-4">
     <div class="col-lg-8">
-<div class="card p-3">
-    <h6 class="mb-1">Payroll history (last 7 days)</h6>
-    <small class="text-muted">Total imported hours per day</small>
+        <div class="card p-3">
+            <h6 class="mb-1">Payroll history (last 7 days)</h6>
+            <small class="text-muted">Total imported hours per day</small>
 
-    <div class="chart-wrapper">
-        <canvas id="hoursChart"></canvas>
-    </div>
-</div>
-
+            <div class="chart-wrapper">
+                <canvas id="hoursChart"></canvas>
+            </div>
+        </div>
     </div>
     <div class="col-lg-4">
         <div class="card p-3 h-100">
@@ -126,6 +126,8 @@
             <tr>
                 <th>Employee ID</th>
                 <th>Total hours</th>
+                <th>Hourly rate</th>
+                <th>Total pay</th>
                 <th>Period</th>
             </tr>
         </thead>
@@ -135,6 +137,12 @@
             <tr>
                 <td>@s.EmployeeId</td>
                 <td>@s.TotalHours</td>
+                <td>
+                    @s.HourlyRate.ToString("C0", CultureInfo.GetCultureInfo("nb-NO"))
+                </td>
+                <td>
+                    @s.TotalPay.ToString("C0", CultureInfo.GetCultureInfo("nb-NO"))
+                </td>
                 <td>@s.Period</td>
             </tr>
         }

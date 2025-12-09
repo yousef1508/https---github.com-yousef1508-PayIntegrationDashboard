@@ -12,4 +12,7 @@ public class DashboardViewModel
 
     public List<string> HoursLabels { get; set; } = new();
     public List<double> HoursValues { get; set; } = new();
+
+    // New: total payout KPI
+    public decimal TotalPayout { get; set; }
 }
