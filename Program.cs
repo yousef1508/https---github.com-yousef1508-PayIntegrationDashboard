@@ -1,23 +1,25 @@
 using Microsoft.EntityFrameworkCore;
 using PayrollIntegrationDashboard.Data;
-using PayrollIntegrationDashboard.GraphQL;
 using PayrollIntegrationDashboard.Services;
+using PayrollIntegrationDashboard.GraphQL;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // MVC
 builder.Services.AddControllersWithViews();
 
-// EF Core + SQLite
+// DbContext (SQLite)
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")
+                    ?? "Data Source=payroll_integration.db");
+});
 
 // Domain services
 builder.Services.AddScoped<IntegrationService>();
 builder.Services.AddScoped<ValidationService>();
-builder.Services.AddHostedService<BackgroundSyncService>();
 
-// GraphQL (HotChocolate)
+// GraphQL (Hot Chocolate)
 builder.Services
     .AddGraphQLServer()
     .AddQueryType<Query>()
@@ -26,13 +28,6 @@ builder.Services
     .AddSorting();
 
 var app = builder.Build();
-
-// Ensure DB exists
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
-}
 
 if (!app.Environment.IsDevelopment())
 {
@@ -44,14 +39,15 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+
 app.UseAuthorization();
 
-// GraphQL endpoint
-app.MapGraphQL("/graphql");
-
-// MVC routing – dashboard as default page
+// MVC routes
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Integration}/{action=Index}/{id?}");
+
+// GraphQL endpoint
+app.MapGraphQL("/graphql");
 
 app.Run();

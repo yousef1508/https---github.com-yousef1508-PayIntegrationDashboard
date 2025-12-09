@@ -64,7 +64,7 @@ public class IntegrationController : Controller
         }
     }
 
-    // JSON endpoint for modal metrics
+    // JSON endpoint for inspector
     [HttpGet]
     public async Task<IActionResult> EmployeeMetrics(int id)
     {
@@ -73,5 +73,12 @@ public class IntegrationController : Controller
             return NotFound();
 
         return Json(metrics);
+    }
+
+    // Human-friendly GraphQL page
+    [HttpGet]
+    public IActionResult GraphQLTools()
+    {
+        return View();
     }
 }

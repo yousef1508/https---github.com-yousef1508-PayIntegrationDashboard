@@ -1,0 +1,113 @@
+@{
+    ViewData["Title"] = "GraphQL API tools";
+}
+
+<div class="row g-4">
+    <div class="col-lg-5">
+        <div class="card p-3 h-100">
+            <h5 class="mb-2">GraphQL API</h5>
+            <p class="small text-muted">
+                Use GraphQL to query payroll summaries, time entries and integration logs.
+                This is the same API an HR or integration partner could use to build custom reports.
+            </p>
+
+            <h6 class="mt-3 mb-2 small text-uppercase text-muted">Example queries</h6>
+            <div class="small">
+                <p class="mb-1 fw-semibold">All payroll summaries</p>
+<pre class="bg-light border rounded p-2 small mb-3"><code>query {
+  payrollSummaries {
+    employeeId
+    totalHours
+    hourlyRate
+    totalPay
+    period
+  }
+}</code></pre>
+
+                <p class="mb-1 fw-semibold">Top 5 by payout</p>
+<pre class="bg-light border rounded p-2 small mb-3"><code>query {
+  payrollSummaries
+    (order: { totalPay: DESC }, take: 5) {
+    employeeId
+    totalPay
+  }
+}</code></pre>
+
+                <p class="mb-1 fw-semibold">Last 5 integration log entries</p>
+<pre class="bg-light border rounded p-2 small"><code>query {
+  integrationLogs(order: { runAt: DESC }, take: 5) {
+    runAt
+    operation
+    success
+    message
+  }
+}</code></pre>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card p-3 h-100 d-flex flex-column">
+            <h6 class="mb-2">Try it out</h6>
+            <p class="small text-muted mb-2">
+                Edit the query and press <strong>Run</strong>. The request is sent to <code>/graphql</code>.
+            </p>
+
+            <textarea id="gqlQuery" class="form-control mb-2" rows="10">
+query {
+  payrollSummaries {
+    employeeId
+    totalHours
+    hourlyRate
+    totalPay
+    period
+  }
+}
+            </textarea>
+
+            <div class="mb-2">
+                <button id="runQuery" class="btn btn-primary btn-sm">
+                    <i class="bi bi-play-fill me-1"></i>Run
+                </button>
+                <span id="gqlStatus" class="small text-muted ms-2"></span>
+            </div>
+
+            <label class="small text-muted mb-1">Result</label>
+            <pre id="gqlResult" class="bg-dark text-light small p-2 rounded mb-0 flex-grow-1" style="overflow:auto; min-height: 160px;"></pre>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const runBtn = document.getElementById('runQuery');
+        const queryBox = document.getElementById('gqlQuery');
+        const resultBox = document.getElementById('gqlResult');
+        const statusLabel = document.getElementById('gqlStatus');
+
+        runBtn.addEventListener('click', async () => {
+            const query = queryBox.value;
+
+            statusLabel.textContent = "Running...";
+            resultBox.textContent = "";
+
+            try {
+                const res = await fetch('/graphql', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ query })
+                });
+
+                const json = await res.json();
+                statusLabel.textContent = res.ok ? "OK" : "Error";
+
+                resultBox.textContent = JSON.stringify(json, null, 2);
+            } catch (e) {
+                statusLabel.textContent = "Network error";
+                resultBox.textContent = e.toString();
+            }
+        });
+    </script>
+}

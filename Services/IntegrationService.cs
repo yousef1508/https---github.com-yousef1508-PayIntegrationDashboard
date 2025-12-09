@@ -65,18 +65,69 @@ public class IntegrationService
             values.Add(daily.FirstOrDefault(x => x.Date == d)?.Hours ?? 0);
         }
 
+        // Integration health
+        var utcNow = DateTime.UtcNow;
+        var lastImport = logs
+            .Where(l => l.Operation == "Import")
+            .OrderByDescending(l => l.RunAt)
+            .FirstOrDefault()?.RunAt;
+
+        var lastExport = logs
+            .Where(l => l.Operation == "Export")
+            .OrderByDescending(l => l.RunAt)
+            .FirstOrDefault()?.RunAt;
+
+        var failedLast24h = logs.Count(l => !l.Success && l.RunAt >= utcNow.AddDays(-1));
+
+        var (status, description) = BuildHealthStatus(lastImport, lastExport, failedLast24h);
+
         return new DashboardViewModel
         {
             Summaries = summaries,
             Logs = logs,
             TotalEmployees = summaries.Count,
             TotalHours = summaries.Sum(s => s.TotalHours),
-            FailedExports = await _db.FailedExports.CountAsync(),
-            LastRun = logs.FirstOrDefault()?.RunAt,
+            TotalPayout = summaries.Sum(s => s.TotalPay),
+            FailedExportsQueued = await _db.FailedExports.CountAsync(),
             HoursLabels = labels,
             HoursValues = values,
-            TotalPayout = summaries.Sum(s => s.TotalPay)
+            LastImport = lastImport,
+            LastExport = lastExport,
+            FailedExportsLast24h = failedLast24h,
+            HealthStatus = status,
+            HealthDescription = description
         };
+    }
+
+    private static (string status, string description) BuildHealthStatus(
+        DateTime? lastImport,
+        DateTime? lastExport,
+        int failedLast24h)
+    {
+        if (lastImport == null && lastExport == null)
+        {
+            return ("No data yet",
+                "Run your first import to start monitoring integrations.");
+        }
+
+        var now = DateTime.UtcNow;
+        bool recentImport = lastImport != null && lastImport > now.AddHours(-2);
+        bool recentExport = lastExport != null && lastExport > now.AddHours(-2);
+
+        if (failedLast24h == 0 && recentImport && recentExport)
+        {
+            return ("Healthy",
+                "Imports and exports are running as expected.");
+        }
+
+        if (failedLast24h > 0 && (recentImport || recentExport))
+        {
+            return ("Degraded",
+                "Some operations have failed recently, but data is still flowing.");
+        }
+
+        return ("Attention needed",
+            "No recent successful runs. Investigate the integration log.");
     }
 
     // --------------------------------------------------------------------
@@ -122,13 +173,13 @@ public class IntegrationService
         // Dummy REST API – simulates HR/time system
         var response = await _http.GetFromJsonAsync<ApiUserResponse>("https://dummyjson.com/users");
 
-        var today = DateTime.Today;
+        var date = DateTime.Today;   // <-- Dagens dato, ikke i går
         return response?.Users?
             .Take(30)
             .Select(u => new TimeEntry
             {
                 EmployeeId = u.Id,
-                Date = today.AddDays(-1),
+                Date = date,
                 Hours = (u.Id % 5) + 5,
                 Source = "API"
             }).ToList() ?? new List<TimeEntry>();
@@ -181,7 +232,7 @@ public class IntegrationService
     }
 
     // --------------------------------------------------------------------
-    // EMPLOYEE METRICS (for modal)
+    // EMPLOYEE METRICS (for inspector)
     // --------------------------------------------------------------------
 
     public async Task<EmployeeMetricsViewModel?> GetEmployeeMetricsAsync(int employeeId)
@@ -199,6 +250,41 @@ public class IntegrationService
         var commission = gross * commissionRate;
         var net = gross - tax - commission;
 
+        // Activity snapshot based on time entries
+        var entries = await _db.TimeEntries
+            .Where(t => t.EmployeeId == employeeId)
+            .OrderBy(t => t.Date)
+            .ToListAsync();
+
+        DateTime? first = entries.FirstOrDefault()?.Date;
+        DateTime? last = entries.LastOrDefault()?.Date;
+
+        double avgPerDay = 0;
+        string trendLabel = "Stable";
+
+        if (entries.Any())
+        {
+            var spanDays = (entries.Max(e => e.Date) - entries.Min(e => e.Date)).TotalDays + 1;
+            if (spanDays > 0)
+            {
+                avgPerDay = entries.Sum(e => e.Hours) / spanDays;
+            }
+
+            // crude trend: last 7 days vs previous 7 days
+            var today = DateTime.Today;
+            var last7Start = today.AddDays(-6);
+            var prev7Start = today.AddDays(-13);
+            var prev7End = today.AddDays(-7);
+
+            var last7 = entries.Where(e => e.Date >= last7Start && e.Date <= today).Sum(e => e.Hours);
+            var prev7 = entries.Where(e => e.Date >= prev7Start && e.Date <= prev7End).Sum(e => e.Hours);
+
+            if (last7 > prev7 * 1.1)
+                trendLabel = "Increasing";
+            else if (last7 < prev7 * 0.9)
+                trendLabel = "Decreasing";
+        }
+
         return new EmployeeMetricsViewModel
         {
             EmployeeId = summary.EmployeeId,
@@ -210,7 +296,11 @@ public class IntegrationService
             CommissionAmount = commission,
             NetPay = net,
             TaxRatePercent = taxRate * 100,
-            CommissionRatePercent = commissionRate * 100
+            CommissionRatePercent = commissionRate * 100,
+            AverageHoursPerDay = avgPerDay,
+            FirstEntryDate = first,
+            LastEntryDate = last,
+            TrendLabel = trendLabel
         };
     }
 
