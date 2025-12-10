@@ -1,5 +1,5 @@
 ﻿@{
-    var title = ViewData["Title"] ?? "Payroll Integration Dashboard";
+    var title = ViewData["Title"] ?? "Azets Payroll Hub";
 }
 
 <!DOCTYPE html>
@@ -13,27 +13,140 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 
     <style>
-        body { background-color: #f5f5f7; }
-        .app-shell { min-height: 100vh; display:flex; }
-        .sidebar { width: 230px; background:#111827; color:#9ca3af; }
-        .sidebar-brand { padding:20px 16px; font-weight:600; color:#fff; font-size:1.25rem; }
-        .sidebar a { display:block; padding:10px 18px; color:#9ca3af; text-decoration:none; font-size:0.95rem; }
-        .sidebar a.active, .sidebar a:hover { background:#1f2937; color:#fff; }
-        .sidebar .nav-section { margin-top:8px; font-size:0.75rem; text-transform:uppercase; padding:0 18px; color:#6b7280; }
-        .main { flex:1; display:flex; flex-direction:column; }
-        .topbar { height:64px; background:#ffffff; border-bottom:1px solid #e5e7eb; display:flex; align-items:center; justify-content:space-between; padding:0 24px; }
-        .content { padding:24px; }
-        .card-kpi { border-radius:14px; border:0; box-shadow:0 1px 2px rgba(0,0,0,0.06); }
-
-        /* Chart area sizing */
-        .chart-wrapper {
-            position: relative;
-            height: 260px;
+        :root {
+            --azets-green: #00c389;
+            --azets-dark: #071525;
+            --azets-mid: #111827;
+            --azets-magenta: #b42b80;
+            --azets-bg: #f3f4f6;
+            --azets-surface: #ffffff;
+            --azets-border: #e5e7eb;
         }
 
-        .chart-wrapper canvas {
-            width: 100% !important;
-            height: 100% !important;
+        body {
+            background-color: var(--azets-bg);
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+        }
+
+        .sidebar {
+            width: 230px;
+            background: var(--azets-dark);
+            color: #9ca3af;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-brand {
+            padding: 18px 16px 8px;
+            font-weight: 600;
+            color: #f9fafb;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sidebar-brand-logo {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            border: 2px solid var(--azets-green);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--azets-green);
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .sidebar .nav-section {
+            margin-top: 14px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            padding: 0 18px;
+            color: #6b7280;
+            letter-spacing: 0.06em;
+        }
+
+        .sidebar a {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 18px;
+            color: #9ca3af;
+            text-decoration: none;
+            font-size: 0.94rem;
+            position: relative;
+        }
+
+        .sidebar a .bi {
+            font-size: 1rem;
+        }
+
+        .sidebar a.active,
+        .sidebar a:hover {
+            background: rgba(0, 195, 137, 0.14);
+            color: #f9fafb;
+        }
+
+        .sidebar a.active::before {
+            content: "";
+            position: absolute;
+            inset-block: 6px;
+            left: 0;
+            width: 3px;
+            border-radius: 999px;
+            background: linear-gradient(180deg, var(--azets-green), #5ef2c2);
+        }
+
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .topbar {
+            height: 64px;
+            background: var(--azets-surface);
+            border-bottom: 1px solid var(--azets-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+        }
+
+        .topbar-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+
+        .topbar-subtitle {
+            font-size: 0.8rem;
+            color: #6b7280;
+        }
+
+        .content {
+            padding: 24px;
+        }
+
+        .badge-env {
+            border-radius: 999px;
+            border: 1px solid var(--azets-border);
+            background: #f9fafb;
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            color: #111827;
+        }
+
+        .card-kpi {
+            border-radius: 16px;
+            border: 0;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
         }
     </style>
 </head>
@@ -41,32 +154,35 @@
     <div class="app-shell">
         <aside class="sidebar">
             <div class="sidebar-brand">
-                <i class="bi bi-diagram-3-fill me-2"></i>Azets Payroll Hub
+                <div class="sidebar-brand-logo">A</div>
+                <span>Azets Payroll Hub</span>
             </div>
+
             <div class="nav-section">Main</div>
-            <a asp-controller="Integration" asp-action="Index" class="active">
-                <i class="bi bi-speedometer2 me-2"></i>Dashboard
+            <a asp-controller="Integration" asp-action="Index" class="@(ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")">
+                <i class="bi bi-speedometer2"></i>Dashboard
             </a>
-            <a asp-controller="Integration" asp-action="Create">
-                <i class="bi bi-plus-circle me-2"></i>Manual time entry
+            <a asp-controller="Integration" asp-action="Create" class="@(ViewContext.RouteData.Values["action"]?.ToString() == "Create" ? "active" : "")">
+                <i class="bi bi-plus-circle"></i>Manual time entry
             </a>
+
             <div class="nav-section">Tools</div>
-            <a href="/graphql" target="_blank">
-                <i class="bi bi-graph-up me-2"></i>GraphQL API
+            <a asp-controller="Integration" asp-action="GraphQLTools" class="@(ViewContext.RouteData.Values["action"]?.ToString() == "GraphQLTools" ? "active" : "")">
+                <i class="bi bi-graph-up"></i>Data API (GraphQL)
             </a>
-            <a href="/health" target="_blank">
-                <i class="bi bi-heart-pulse me-2"></i>Health check
+            <a asp-controller="Health" asp-action="Index">
+                <i class="bi bi-heart-pulse"></i>Health check
             </a>
         </aside>
 
         <div class="main">
             <header class="topbar">
                 <div>
-                    <div class="fw-semibold">Welcome, Integration Consultant</div>
-                    <small class="text-muted">Payroll &amp; HR Integration Dashboard</small>
+                    <div class="topbar-title">Welcome, Integration Consultant</div>
+                    <div class="topbar-subtitle">Payroll &amp; HR Integration Dashboard</div>
                 </div>
-                <div>
-                    <span class="badge bg-light text-dark border me-3">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="badge-env">
                         <i class="bi bi-cloud-arrow-down-fill me-1"></i> Demo environment
                     </span>
                     <i class="bi bi-person-circle fs-4"></i>

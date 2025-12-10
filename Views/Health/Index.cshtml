@@ -1,0 +1,111 @@
+@model PayrollIntegrationDashboard.Models.HealthViewModel
+
+@{
+    ViewData["Title"] = "Health check";
+
+    var isHealthy = Model.Status == "Healthy";
+    var badgeClass = isHealthy
+        ? "bg-success"
+        : "bg-danger";
+
+    var textClass = isHealthy
+        ? "text-success"
+        : "text-danger";
+}
+
+<style>
+    .health-page {
+        min-height: calc(100vh - 64px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: #f3f4f6;
+    }
+
+    .health-widget {
+        width: 360px;
+        max-width: 95vw;
+        border-radius: 20px;
+        background: #ffffff;
+        box-shadow: 0 18px 40px rgba(15,23,42,0.20);
+        padding: 20px 22px;
+    }
+
+    .health-bubble {
+        width: 40px;
+        height: 40px;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #ffffff;
+        font-size: 1.4rem;
+    }
+
+    .health-subtle {
+        font-size: 0.85rem;
+        color: #6b7280;
+    }
+</style>
+
+<div class="health-page">
+    <div class="health-widget">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div>
+                <div class="fw-semibold">Integration health</div>
+                <div class="health-subtle">Status for import/export in Azets Payroll Hub</div>
+            </div>
+            <div class="health-bubble @badgeClass">
+                <i class="bi bi-heart-pulse-fill"></i>
+            </div>
+        </div>
+
+        <hr class="my-3" />
+
+        <div class="d-flex align-items-center mb-2">
+            <span class="badge @badgeClass me-2">
+                @(isHealthy ? "Healthy" : "Attention needed")
+            </span>
+            <span class="@textClass fw-semibold">
+                @Model.Status
+            </span>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Model.Description))
+        {
+            <p class="mb-3 health-subtle">
+                @Model.Description
+            </p>
+        }
+
+        <dl class="row small mb-0">
+            <dt class="col-5 text-muted">Last import</dt>
+            <dd class="col-7">
+                @(Model.LastImport?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "–")
+            </dd>
+
+            <dt class="col-5 text-muted">Last export</dt>
+            <dd class="col-7">
+                @(Model.LastExport?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "–")
+            </dd>
+
+            <dt class="col-5 text-muted">Failed (24h)</dt>
+            <dd class="col-7">
+                @Model.FailedLast24h
+            </dd>
+        </dl>
+
+        <hr class="my-3" />
+
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="health-subtle">
+                Status oppdatert nå.<br />
+                Bruk denne siden når du feilsøker integrasjoner.
+            </div>
+            <a asp-controller="Integration" asp-action="Index" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrow-left-short me-1"></i>Back
+            </a>
+        </div>
+    </div>
+</div>

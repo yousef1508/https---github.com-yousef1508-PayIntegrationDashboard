@@ -1,0 +1,86 @@
+@model PayrollIntegrationDashboard.Models.ExportPreviewViewModel
+@using System.Globalization
+
+@{
+    ViewData["Title"] = "Export preview";
+    var culture = CultureInfo.GetCultureInfo("nb-NO");
+}
+
+<div class="card p-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div>
+            <h5 class="mb-0">Export preview</h5>
+            <small class="text-muted">
+                @(Model.CustomerName == null ? "All customers" : $"Customer: {Model.CustomerName}")
+            </small>
+        </div>
+        <div class="text-end small text-muted">
+            <div>Batch ID: @Model.BatchId</div>
+            <div>Generated at: @Model.GeneratedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</div>
+        </div>
+    </div>
+
+    @if (!Model.Summaries.Any())
+    {
+        <div class="alert alert-info mb-0">
+            No data available for export. Run an import or change customer.
+        </div>
+    }
+    else
+    {
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <div class="small text-muted">Employees in batch</div>
+                <div class="fs-5 fw-semibold">@Model.TotalEmployees</div>
+            </div>
+            <div class="col-md-4">
+                <div class="small text-muted">Total hours</div>
+                <div class="fs-5 fw-semibold">@Model.TotalHours</div>
+            </div>
+            <div class="col-md-4">
+                <div class="small text-muted">Total payout</div>
+                <div class="fs-5 fw-semibold">@Model.TotalPayout.ToString("C0", culture)</div>
+            </div>
+        </div>
+
+        <p class="small text-muted">
+            This preview shows what would be sent to the payroll system: one record per employee with total hours and amount for the current period.
+        </p>
+
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Employee ID</th>
+                    <th>Total hours</th>
+                    <th>Hourly rate</th>
+                    <th>Total pay</th>
+                    <th>Customer</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var s in Model.Summaries.OrderByDescending(x => x.TotalPay))
+            {
+                <tr>
+                    <td>@s.EmployeeId</td>
+                    <td>@s.TotalHours</td>
+                    <td>@s.HourlyRate.ToString("C0", culture)</td>
+                    <td>@s.TotalPay.ToString("C0", culture)</td>
+                    <td>@s.CustomerName</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+
+        <div class="mt-3 d-flex justify-content-between align-items-center">
+            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrow-left-short me-1"></i>Back to dashboard
+            </a>
+            <form asp-action="Export" method="post">
+                <input type="hidden" name="customer" value="@Model.CustomerName" />
+                <button class="btn btn-success btn-sm">
+                    <i class="bi bi-cloud-upload me-1"></i>Confirm export
+                </button>
+            </form>
+        </div>
+    }
+</div>
