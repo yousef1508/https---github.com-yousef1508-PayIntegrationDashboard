@@ -1,0 +1,53 @@
+@model PayrollIntegrationDashboard.Models.DataQualityViewModel
+
+@{
+    ViewData["Title"] = "Data quality";
+}
+
+<div class="card p-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div>
+            <h5 class="mb-0">Data quality & mapping</h5>
+            <small class="text-muted">How incoming time data is validated before payroll</small>
+        </div>
+        <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-left-short me-1"></i>Back to dashboard
+        </a>
+    </div>
+
+    <div class="row mb-3 small">
+        <div class="col-md-4">
+            <div class="text-muted">Last import</div>
+            <div class="fw-semibold">
+                @(Model.LastImportAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "–")
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="text-muted">Invalid entries (last import)</div>
+            <div class="fw-semibold">
+                @(Model.LastImportInvalidCount?.ToString() ?? "–")
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="text-muted">Purpose</div>
+            <div class="fw-semibold">Protect payroll from bad data</div>
+        </div>
+    </div>
+
+    <h6 class="mt-2 mb-2">Validation rules</h6>
+    <ul class="small">
+        @foreach (var rule in Model.ValidationRules)
+        {
+            <li>@rule</li>
+        }
+    </ul>
+
+    <h6 class="mt-3 mb-2">Field mapping</h6>
+    <p class="small">
+        @Model.MappingDescription
+    </p>
+
+    <p class="small text-muted mb-0">
+        In a real implementation, these rules are typically customer-specific. They are documented and agreed with the customer so that everyone understands how HR data flows into payroll.
+    </p>
+</div>

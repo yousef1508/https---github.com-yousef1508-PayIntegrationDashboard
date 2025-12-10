@@ -74,6 +74,15 @@
         background-color: #f9fafb;
     }
 
+    .badge-high {
+        background: rgba(59,130,246,0.12);
+        color: #1d4ed8;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 0.7rem;
+        margin-left: 4px;
+    }
+
     .health-chip {
         font-size: 0.8rem;
         padding: 4px 10px;
@@ -97,21 +106,71 @@
         background: rgba(248, 113, 113, 0.12);
         color: #b91c1c;
     }
+
+    /* Data quality card polish */
+    .dq-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: #f3f4ff;
+        color: #4b5563;
+        font-size: 0.75rem;
+        margin-bottom: 6px;
+    }
+
+    .dq-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #22c55e;
+    }
+
+    .dq-header-line {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+    }
 </style>
 
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h3 class="mb-0">Dashboard</h3>
         <small class="text-muted">Monitor automated integrations between time tracking and payroll</small>
     </div>
+    <div class="d-flex align-items-center gap-2">
+        <form asp-action="Index" method="get" class="d-flex align-items-center gap-2">
+            <label class="small text-muted mb-0">Customer</label>
+            <select name="customer" class="form-select form-select-sm" style="width: 180px;" onchange="this.form.submit()">
+                @foreach (var c in Model.Customers)
+                {
+                    <option value="@c" selected="@(c == Model.SelectedCustomer)">
+                        @c
+                    </option>
+                }
+            </select>
+        </form>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="small text-muted">
+        @(Model.SelectedCustomer == "All" ? "Showing all customers" : $"Showing data for {Model.SelectedCustomer}")
+    </div>
     <div>
         <form asp-action="Import" method="post" class="d-inline">
-            <button class="btn btn-outline-primary me-2">
+            <input type="hidden" name="customer" value="@Model.SelectedCustomer" />
+            <button class="btn btn-outline-primary btn-sm me-2">
                 <i class="bi bi-cloud-download me-1"></i> Import time data
             </button>
         </form>
+        <a asp-action="ExportPreview" asp-route-customer="@Model.SelectedCustomer" class="btn btn-outline-secondary btn-sm me-2">
+            <i class="bi bi-eye me-1"></i> Preview export
+        </a>
         <form asp-action="Export" method="post" class="d-inline">
-            <button class="btn btn-success">
+            <input type="hidden" name="customer" value="@Model.SelectedCustomer" />
+            <button class="btn btn-success btn-sm">
                 <i class="bi bi-cloud-upload me-1"></i> Export to payroll
             </button>
         </form>
@@ -120,14 +179,14 @@
 
 <div class="row g-3 mb-4">
     <div class="col-md-3">
-        <div class="card card-kpi p-3">
+        <div class="card card-kpi p-3" title="Number of employees with time reported in the current period">
             <div class="small text-muted">Total employees</div>
             <div class="fs-4 fw-semibold">@Model.TotalEmployees</div>
             <div class="small text-success">Synced from HR/time systems</div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card card-kpi p-3">
+        <div class="card card-kpi p-3" title="Sum of all imported hours in the current payroll period">
             <div class="small text-muted">Total hours (period)</div>
             <div class="fs-4 fw-semibold">@Model.TotalHours</div>
             <div class="small text-muted">Based on latest import</div>
@@ -145,29 +204,105 @@
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card card-kpi p-3">
+        <div class="card card-kpi p-3" title="Calculated as hours × rate per employee">
             <div class="small text-muted">Estimated payout (period)</div>
             <div class="fs-4 fw-semibold">
                 @Model.TotalPayout.ToString("C0", culture)
             </div>
-            <div class="small text-muted">Basert på timesatser per ansatt</div>
+            <div class="small text-muted">Sum of hours × rate per employee</div>
         </div>
     </div>
 </div>
 
+<!-- SINGLE ROW: left = chart + employees, right = health + schedule + weather + data quality -->
 <div class="row g-4 mb-4">
-    <div class="col-lg-8">
+    <!-- LEFT SIDE -->
+    <div class="col-lg-8 d-flex flex-column gap-3">
         <div class="card p-3">
             <h6 class="mb-1">Payroll history (last 7 days)</h6>
             <small class="text-muted">Total imported hours per day</small>
 
-            <div class="chart-wrapper mt-3">
+            <div class="chart-wrapper mt-3" style="height:260px;">
                 <canvas id="hoursChart"></canvas>
             </div>
+
+            @if (!Model.HoursValues.Any(v => v > 0))
+            {
+                <div class="small text-muted mt-2">
+                    No time data yet. Run an import to populate the chart.
+                </div>
+            }
+        </div>
+
+        <div class="card p-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                    <h6 class="mb-0">Recent employees</h6>
+                    <small class="text-muted">Aggregated hours ready for export</small>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <input id="employeeSearch" class="form-control form-control-sm" style="width: 190px;" placeholder="Search employee or period" />
+                    <select id="employeeFilter" class="form-select form-select-sm" style="width: 160px;">
+                        <option value="all">All employees</option>
+                        <option value="highHours">High hours</option>
+                        <option value="lowHours">Low hours</option>
+                    </select>
+                    <a asp-action="Create" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-plus-circle me-1"></i>Manual entry
+                    </a>
+                </div>
+            </div>
+
+            <table class="table table-hover align-middle mb-0" id="employeeTable">
+                <thead>
+                    <tr>
+                        <th>Employee ID</th>
+                        <th>Total hours</th>
+                        <th>Hourly rate</th>
+                        <th>Total pay</th>
+                        <th>Period</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @if (!Model.Summaries.Any())
+                {
+                    <tr>
+                        <td colspan="5" class="small text-muted">
+                            No employees found for this customer/period. Run an import or change customer.
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    foreach (var s in Model.Summaries)
+                    {
+                        var high = s.TotalHours >= 180;
+                        <tr class="employee-row"
+                            data-employee-id="@s.EmployeeId"
+                            data-total-hours="@s.TotalHours"
+                            data-period="@s.Period">
+                            <td>
+                                @s.EmployeeId
+                                @if (high)
+                                {
+                                    <span class="badge-high">High hours</span>
+                                }
+                            </td>
+                            <td>@s.TotalHours</td>
+                            <td>@s.HourlyRate.ToString("C0", culture)</td>
+                            <td>@s.TotalPay.ToString("C0", culture)</td>
+                            <td>@s.Period</td>
+                        </tr>
+                    }
+                }
+                </tbody>
+            </table>
         </div>
     </div>
-    <div class="col-lg-4">
-        <div class="card p-3 h-100">
+
+    <!-- RIGHT SIDE -->
+    <div class="col-lg-4 d-flex flex-column gap-3">
+        <div class="card p-3">
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div>
                     <h6 class="mb-1">Integration health</h6>
@@ -185,15 +320,15 @@
                 };
             }
 
-            <div class="mt-2">
+            <div class="mt-1 mb-1">
                 <span class="@statusClass">
                     <i class="bi bi-activity"></i>@Model.HealthStatus
                 </span>
             </div>
 
-            <div class="small mt-2">@Model.HealthDescription</div>
+            <div class="small mt-1 mb-2">@Model.HealthDescription</div>
 
-            <dl class="row small mt-3 mb-0">
+            <dl class="row small mb-0">
                 <dt class="col-5 text-muted">Last import</dt>
                 <dd class="col-7">
                     @(Model.LastImport?.ToLocalTime().ToString("dd.MM HH:mm") ?? "–")
@@ -205,55 +340,103 @@
                 <dt class="col-5 text-muted">Failed (24h)</dt>
                 <dd class="col-7">@Model.FailedExportsLast24h</dd>
             </dl>
+
+            <div class="small text-muted mt-2">
+                If status is <strong>Attention needed</strong>, an alert could be sent to the integration team via email or Teams.
+            </div>
+
+            <div class="mt-2">
+                <a asp-action="Logs" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-journal-text me-1"></i>Open integration log
+                </a>
+            </div>
+        </div>
+
+        <div class="card p-3">
+            <h6 class="mb-1">Automation schedule</h6>
+            <small class="text-muted">How and when integrations run</small>
+
+            <dl class="row small mt-2 mb-1">
+                <dt class="col-4 text-muted">Imports</dt>
+                <dd class="col-8">@Model.ImportScheduleDescription</dd>
+                <dt class="col-4 text-muted">Exports</dt>
+                <dd class="col-8">@Model.ExportScheduleDescription</dd>
+                <dt class="col-4 text-muted">Next import</dt>
+                <dd class="col-8">
+                    @(Model.NextImportRun?.ToLocalTime().ToString("dd.MM HH:mm") ?? "–")
+                </dd>
+                <dt class="col-4 text-muted">Next export</dt>
+                <dd class="col-8">
+                    @(Model.NextExportRun?.ToLocalTime().ToString("dd.MM HH:mm") ?? "–")
+                </dd>
+            </dl>
+        </div>
+
+        <div class="card p-3">
+            <h6 class="mb-1">Oslo conditions</h6>
+            <small class="text-muted">For the team at Skøyen</small>
+
+            @if (Model.WeatherTemperature.HasValue)
+            {
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <div>
+                        <div class="fw-semibold">
+                            @Model.WeatherTemperature.Value.ToString("F1") °C
+                        </div>
+                        <div class="small text-muted">@Model.WeatherSummary</div>
+                    </div>
+                    <div class="text-end small">
+                        <div class="text-muted">@Model.WeatherLocation</div>
+                        <div class="text-muted">Useful for planning shifts & on-site work</div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="small text-muted mt-2">
+                    Weather data is temporarily unavailable.
+                </div>
+            }
+        </div>
+
+        <div class="card p-3">
+            <div class="dq-header-line">
+                <div>
+                    <h6 class="mb-1">Data quality</h6>
+                    <small class="text-muted">Validation on inbound time data</small>
+                </div>
+                <div class="dq-pill">
+                    <span class="dq-dot"></span>
+                    <span>@(Model.LastImportInvalidCount.GetValueOrDefault(0) == 0 ? "Clean" : "Issues")</span>
+                </div>
+            </div>
+
+            <div class="mt-2 small">
+                <div class="d-flex justify-content-between">
+                    <span class="text-muted">Invalid entries (last import)</span>
+                    <span class="fw-semibold">
+                        @((Model.LastImportInvalidCount?.ToString()) ?? "–")
+                    </span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span class="text-muted">Last import</span>
+                    <span>
+                        @(Model.LastImport?.ToLocalTime().ToString("dd.MM HH:mm") ?? "–")
+                    </span>
+                </div>
+            </div>
+
+            <div class="mt-3 small">
+                Validation rules check employee IDs, hours and date ranges before data reaches payroll.
+            </div>
+
+            <div class="mt-3">
+                <a asp-action="DataQuality" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-shield-check me-1"></i>See validation &amp; mapping rules
+                </a>
+            </div>
         </div>
     </div>
-</div>
-
-<div class="card p-3">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-        <div>
-            <h6 class="mb-0">Recent employees</h6>
-            <small class="text-muted">Aggregated hours ready for export</small>
-        </div>
-        <div class="d-flex align-items-center gap-2">
-            <input id="employeeSearch" class="form-control form-control-sm" style="width: 190px;" placeholder="Search employee or period" />
-            <select id="employeeFilter" class="form-select form-select-sm" style="width: 160px;">
-                <option value="all">All employees</option>
-                <option value="highHours">High hours</option>
-                <option value="lowHours">Low hours</option>
-            </select>
-            <a asp-action="Create" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-plus-circle me-1"></i>Manual entry
-            </a>
-        </div>
-    </div>
-
-    <table class="table table-hover align-middle mb-0" id="employeeTable">
-        <thead>
-            <tr>
-                <th>Employee ID</th>
-                <th>Total hours</th>
-                <th>Hourly rate</th>
-                <th>Total pay</th>
-                <th>Period</th>
-            </tr>
-        </thead>
-        <tbody>
-        @foreach (var s in Model.Summaries)
-        {
-            <tr class="employee-row"
-                data-employee-id="@s.EmployeeId"
-                data-total-hours="@s.TotalHours"
-                data-period="@s.Period">
-                <td>@s.EmployeeId</td>
-                <td>@s.TotalHours</td>
-                <td>@s.HourlyRate.ToString("C0", culture)</td>
-                <td>@s.TotalPay.ToString("C0", culture)</td>
-                <td>@s.Period</td>
-            </tr>
-        }
-        </tbody>
-    </table>
 </div>
 
 <template id="employeeMetricsTemplate">
@@ -366,7 +549,7 @@
 
         async function openMetricsCard(employeeId) {
             try {
-                // Use GraphQL as data source for the modal
+                // GraphQL as data source for the modal
                 const gqlRes = await fetch('/graphql', {
                     method: 'POST',
                     headers: {
@@ -403,7 +586,6 @@
 
                 const data = json.data.employeeMetrics;
 
-                // build card from template
                 const fragment = cardTemplate.content.cloneNode(true);
                 const card = fragment.querySelector('[data-role="metrics-card"]');
 
@@ -412,7 +594,6 @@
                     return;
                 }
 
-                // cascade cards
                 const existing = document.querySelectorAll('.metrics-card').length;
                 const offset = existing * 24;
                 card.style.right = (24 + offset) + 'px';
@@ -434,10 +615,8 @@
                 setField("avgPerDay", data.averageHoursPerDay.toFixed(1));
                 setField("trend", data.trendLabel);
 
-                // append card to DOM immediately
                 document.body.appendChild(card);
 
-                // close button
                 card.querySelector('[data-role="close-btn"]').addEventListener('click', () => {
                     if (card._chartInstance) {
                         card._chartInstance.destroy();
@@ -445,7 +624,6 @@
                     card.remove();
                 });
 
-                // drag logic
                 const dragHandle = card.querySelector('[data-role="drag-handle"]');
                 if (dragHandle) {
                     let isDragging = false;
@@ -482,7 +660,6 @@
                     });
                 }
 
-                // chart + sliders
                 try {
                     const ctxPie = card.querySelector('[data-role="pie"]').getContext('2d');
                     const baseGross = data.grossPay;
@@ -560,7 +737,6 @@
             }
         }
 
-        // row click
         document.querySelectorAll('tr.employee-row').forEach(row => {
             row.addEventListener('click', () => {
                 const id = row.getAttribute('data-employee-id');
@@ -568,7 +744,6 @@
             });
         });
 
-        // search & filter
         const searchInput = document.getElementById('employeeSearch');
         const filterSelect = document.getElementById('employeeFilter');
 
@@ -578,8 +753,12 @@
 
             document.querySelectorAll('#employeeTable tbody tr').forEach(row => {
                 const employeeId = row.cells[0].innerText.toLowerCase();
-                const period = row.getAttribute('data-period').toLowerCase();
+                const period = row.getAttribute('data-period')?.toLowerCase() ?? "";
                 const hours = Number(row.getAttribute('data-total-hours'));
+
+                if (row.querySelector('td').colSpan === 5) {
+                    return;
+                }
 
                 let visible = true;
 
@@ -594,7 +773,9 @@
             });
         }
 
-        searchInput.addEventListener('input', filterTable);
-        filterSelect.addEventListener('change', filterTable);
+        if (searchInput && filterSelect) {
+            searchInput.addEventListener('input', filterTable);
+            filterSelect.addEventListener('change', filterTable);
+        }
     </script>
 }

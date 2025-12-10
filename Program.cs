@@ -8,26 +8,31 @@ var builder = WebApplication.CreateBuilder(args);
 // MVC
 builder.Services.AddControllersWithViews();
 
-// DbContext (SQLite)
+// EF Core + SQLite
 builder.Services.AddDbContext<AppDbContext>(options =>
-{
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")
-                    ?? "Data Source=payroll_integration.db");
-});
+    options.UseSqlite(
+        builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? "Data Source=payroll_integration.db"));
 
-// Domain services
+// App services
 builder.Services.AddScoped<IntegrationService>();
 builder.Services.AddScoped<ValidationService>();
 
-// GraphQL (Hot Chocolate)
+// GraphQL (HotChocolate)
 builder.Services
     .AddGraphQLServer()
     .AddQueryType<Query>()
-    .AddMutationType<Mutation>()
     .AddFiltering()
     .AddSorting();
 
 var app = builder.Build();
+
+// Ensure DB/tables exist
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.EnsureCreated();
+}
 
 if (!app.Environment.IsDevelopment())
 {
@@ -42,7 +47,6 @@ app.UseRouting();
 
 app.UseAuthorization();
 
-// MVC routes
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Integration}/{action=Index}/{id?}");

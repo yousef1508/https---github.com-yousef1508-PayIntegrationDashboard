@@ -1,0 +1,90 @@
+@model PayrollIntegrationDashboard.Models.LogsViewModel
+
+@{
+    ViewData["Title"] = "Integration log";
+}
+
+<div class="card p-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div>
+            <h5 class="mb-0">Integration log</h5>
+            <small class="text-muted">Filter by operation, status and time range</small>
+        </div>
+    </div>
+
+    <form method="get" class="row g-2 mb-3 small">
+        <div class="col-md-3">
+            <label class="form-label mb-1 text-muted">Operation</label>
+            <select name="operation" class="form-select form-select-sm">
+                <option value="All" selected="@(Model.SelectedOperation == "All")">All</option>
+                <option value="Import" selected="@(Model.SelectedOperation == "Import")">Import</option>
+                <option value="Export" selected="@(Model.SelectedOperation == "Export")">Export</option>
+                <option value="Retry" selected="@(Model.SelectedOperation == "Retry")">Retry</option>
+                <option value="ManualAdd" selected="@(Model.SelectedOperation == "ManualAdd")">Manual add</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label mb-1 text-muted">Status</label>
+            <select name="status" class="form-select form-select-sm">
+                <option value="All" selected="@(Model.SelectedStatus == "All")">All</option>
+                <option value="Success" selected="@(Model.SelectedStatus == "Success")">Success</option>
+                <option value="Failed" selected="@(Model.SelectedStatus == "Failed")">Failed</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label mb-1 text-muted">Time range</label>
+            <select name="range" class="form-select form-select-sm">
+                <option value="1h" selected="@(Model.SelectedRange == "1h")">Last 1 hour</option>
+                <option value="24h" selected="@(Model.SelectedRange == "24h")">Last 24 hours</option>
+                <option value="7d" selected="@(Model.SelectedRange == "7d")">Last 7 days</option>
+                <option value="all" selected="@(Model.SelectedRange == "all")">All</option>
+            </select>
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+            <button class="btn btn-primary btn-sm me-2">
+                <i class="bi bi-funnel me-1"></i>Apply
+            </button>
+            <a asp-action="Index" class="btn btn-outline-secondary btn-sm">Back</a>
+        </div>
+    </form>
+
+    @if (!Model.Logs.Any())
+    {
+        <div class="alert alert-info mb-0">
+            No log entries match the current filters.
+        </div>
+    }
+    else
+    {
+        <table class="table table-sm align-middle mb-0 small">
+            <thead>
+                <tr>
+                    <th style="width: 160px;">Time (UTC)</th>
+                    <th style="width: 90px;">Operation</th>
+                    <th style="width: 80px;">Status</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var log in Model.Logs)
+            {
+                <tr>
+                    <td>@log.RunAt.ToString("dd.MM.yyyy HH:mm:ss")</td>
+                    <td>@log.Operation</td>
+                    <td>
+                        @if (log.Success)
+                        {
+                            <span class="badge bg-success-subtle text-success border border-success-subtle">Success</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Failed</span>
+                        }
+                    </td>
+                    <td>@log.Message</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>

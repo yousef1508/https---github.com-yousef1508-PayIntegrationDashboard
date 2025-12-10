@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using PayrollIntegrationDashboard.Data;
 using PayrollIntegrationDashboard.Models;
@@ -41,14 +42,21 @@ public class IntegrationService
     // DASHBOARD MODEL
     // --------------------------------------------------------------------
 
-    public async Task<DashboardViewModel> GetDashboardAsync()
+    public async Task<DashboardViewModel> GetDashboardAsync(string? customerName)
     {
-        var summaries = await GetCurrentPayrollSummaryAsync();
+        var summaries = await GetCurrentPayrollSummaryAsync(customerName);
         var logs = await GetLogsAsync();
 
-        // Last 7 days for chart
+        // Last 7 days for chart (filtered by customer if provided)
         var from = DateTime.Today.AddDays(-6);
-        var daily = await _db.TimeEntries
+        var timeQuery = _db.TimeEntries.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(customerName) && customerName != "All")
+        {
+            timeQuery = timeQuery.Where(t => t.CustomerName == customerName);
+        }
+
+        var daily = await timeQuery
             .Where(t => t.Date >= from)
             .GroupBy(t => t.Date.Date)
             .Select(g => new { Date = g.Key, Hours = g.Sum(x => x.Hours) })
@@ -81,6 +89,45 @@ public class IntegrationService
 
         var (status, description) = BuildHealthStatus(lastImport, lastExport, failedLast24h);
 
+        // Customers (multi-tenant feel)
+        var customers = await _db.TimeEntries
+            .Select(t => t.CustomerName)
+            .Distinct()
+            .OrderBy(c => c)
+            .ToListAsync();
+
+        if (!customers.Contains("All"))
+        {
+            customers.Insert(0, "All");
+        }
+
+        var selectedCustomer = string.IsNullOrWhiteSpace(customerName) ? "All" : customerName;
+
+        // Schedule preview
+        var now = DateTime.UtcNow;
+        var nextImport = GetNextImportRun(now);
+        var nextExport = GetNextExportRun(now);
+
+        // Data quality: parse last invalid count from last import log message
+        int? lastInvalid = null;
+        var lastImportLog = logs
+            .Where(l => l.Operation == "Import")
+            .OrderByDescending(l => l.RunAt)
+            .FirstOrDefault();
+
+        if (lastImportLog?.Message != null)
+        {
+            // Message format: "Imported X entries, Y invalid."
+            var match = Regex.Match(lastImportLog.Message, @"Imported\s+\d+\s+entries,\s+(\d+)\s+invalid", RegexOptions.IgnoreCase);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out var parsed))
+            {
+                lastInvalid = parsed;
+            }
+        }
+
+        // Weather integration (Oslo / Skøyen)
+        var weather = await FetchWeatherAsync();
+
         return new DashboardViewModel
         {
             Summaries = summaries,
@@ -89,13 +136,29 @@ public class IntegrationService
             TotalHours = summaries.Sum(s => s.TotalHours),
             TotalPayout = summaries.Sum(s => s.TotalPay),
             FailedExportsQueued = await _db.FailedExports.CountAsync(),
+
             HoursLabels = labels,
             HoursValues = values,
+
             LastImport = lastImport,
             LastExport = lastExport,
             FailedExportsLast24h = failedLast24h,
             HealthStatus = status,
-            HealthDescription = description
+            HealthDescription = description,
+
+            Customers = customers,
+            SelectedCustomer = selectedCustomer,
+
+            ImportScheduleDescription = "Imports every 15 minutes between 07:00–18:00 (Mon–Fri).",
+            ExportScheduleDescription = "Exports nightly at 01:00.",
+            NextImportRun = nextImport,
+            NextExportRun = nextExport,
+
+            LastImportInvalidCount = lastInvalid,
+
+            WeatherLocation = weather?.Location,
+            WeatherTemperature = weather?.Temperature,
+            WeatherSummary = weather?.Summary
         };
     }
 
@@ -128,6 +191,30 @@ public class IntegrationService
 
         return ("Attention needed",
             "No recent successful runs. Investigate the integration log.");
+    }
+
+    private static DateTime GetNextImportRun(DateTime nowUtc)
+    {
+        // 15 min interval between 07:00–18:00, Mon–Fri
+        var local = nowUtc; // assume app runs in local time for demo
+        var baseSlot = new DateTime(local.Year, local.Month, local.Day, local.Hour, local.Minute / 15 * 15, 0);
+        var next = baseSlot.AddMinutes(15);
+
+        if (next.Hour < 7)
+            next = next.Date.AddHours(7);
+
+        if (next.Hour >= 18)
+            next = next.Date.AddDays(1).AddHours(7);
+
+        return next;
+    }
+
+    private static DateTime GetNextExportRun(DateTime nowUtc)
+    {
+        var local = nowUtc;
+        var todayRun = local.Date.AddHours(1); // 01:00
+        if (local < todayRun) return todayRun;
+        return todayRun.AddDays(1);
     }
 
     // --------------------------------------------------------------------
@@ -170,10 +257,10 @@ public class IntegrationService
 
     private async Task<List<TimeEntry>> FetchExternalTimeDataAsync()
     {
-        // Dummy REST API – simulates HR/time system
+        // DummyJSON users = real, public REST API
         var response = await _http.GetFromJsonAsync<ApiUserResponse>("https://dummyjson.com/users");
 
-        var date = DateTime.Today;   // <-- Dagens dato, ikke i går
+        var date = DateTime.Today;
         return response?.Users?
             .Take(30)
             .Select(u => new TimeEntry
@@ -181,7 +268,8 @@ public class IntegrationService
                 EmployeeId = u.Id,
                 Date = date,
                 Hours = (u.Id % 5) + 5,
-                Source = "API"
+                Source = "API",
+                CustomerName = u.Company?.Name ?? "Demo customer"
             }).ToList() ?? new List<TimeEntry>();
     }
 
@@ -193,28 +281,40 @@ public class IntegrationService
     private class ApiUser
     {
         public int Id { get; set; }
+        public ApiCompany Company { get; set; } = new();
+    }
+
+    private class ApiCompany
+    {
+        public string Name { get; set; } = "Demo customer";
     }
 
     // --------------------------------------------------------------------
-    // SUMMARY (includes money)
+    // SUMMARY (includes money, filtered by customer)
     // --------------------------------------------------------------------
 
-    public async Task<List<PayrollSummary>> GetCurrentPayrollSummaryAsync()
+    public async Task<List<PayrollSummary>> GetCurrentPayrollSummaryAsync(string? customerName = null)
     {
         var now = DateTime.Now;
         var period = $"{now:yyyy-MM}";
 
-        // First: let EF / SQL do grouping + sum, then materialize
-        var grouped = await _db.TimeEntries
+        var query = _db.TimeEntries.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(customerName) && customerName != "All")
+        {
+            query = query.Where(t => t.CustomerName == customerName);
+        }
+
+        var grouped = await query
             .GroupBy(t => t.EmployeeId)
             .Select(g => new
             {
                 EmployeeId = g.Key,
-                TotalHours = g.Sum(x => x.Hours)
+                TotalHours = g.Sum(x => x.Hours),
+                CustomerName = g.Select(x => x.CustomerName).FirstOrDefault() ?? "Demo customer"
             })
             .ToListAsync();
 
-        // Second: in memory, apply hourly rates and compute pay
         var summaries = grouped.Select(g =>
         {
             var rate = _employeeRates.TryGetValue(g.EmployeeId, out var r) ? r : 280m;
@@ -224,7 +324,8 @@ public class IntegrationService
                 TotalHours = g.TotalHours,
                 Period = period,
                 HourlyRate = rate,
-                TotalPay = rate * (decimal)g.TotalHours
+                TotalPay = rate * (decimal)g.TotalHours,
+                CustomerName = g.CustomerName
             };
         }).ToList();
 
@@ -232,7 +333,7 @@ public class IntegrationService
     }
 
     // --------------------------------------------------------------------
-    // EMPLOYEE METRICS (for inspector)
+    // EMPLOYEE METRICS (for inspector + GraphQL)
     // --------------------------------------------------------------------
 
     public async Task<EmployeeMetricsViewModel?> GetEmployeeMetricsAsync(int employeeId)
@@ -250,7 +351,6 @@ public class IntegrationService
         var commission = gross * commissionRate;
         var net = gross - tax - commission;
 
-        // Activity snapshot based on time entries
         var entries = await _db.TimeEntries
             .Where(t => t.EmployeeId == employeeId)
             .OrderBy(t => t.Date)
@@ -270,7 +370,6 @@ public class IntegrationService
                 avgPerDay = entries.Sum(e => e.Hours) / spanDays;
             }
 
-            // crude trend: last 7 days vs previous 7 days
             var today = DateTime.Today;
             var last7Start = today.AddDays(-6);
             var prev7Start = today.AddDays(-13);
@@ -279,10 +378,8 @@ public class IntegrationService
             var last7 = entries.Where(e => e.Date >= last7Start && e.Date <= today).Sum(e => e.Hours);
             var prev7 = entries.Where(e => e.Date >= prev7Start && e.Date <= prev7End).Sum(e => e.Hours);
 
-            if (last7 > prev7 * 1.1)
-                trendLabel = "Increasing";
-            else if (last7 < prev7 * 0.9)
-                trendLabel = "Decreasing";
+            if (last7 > prev7 * 1.1) trendLabel = "Increasing";
+            else if (last7 < prev7 * 0.9) trendLabel = "Decreasing";
         }
 
         return new EmployeeMetricsViewModel
@@ -308,11 +405,11 @@ public class IntegrationService
     // EXPORT
     // --------------------------------------------------------------------
 
-    public async Task<ExportResult> ExportPayrollAsync()
+    public async Task<ExportResult> ExportPayrollAsync(string? customerName = null)
     {
         try
         {
-            var summaries = await GetCurrentPayrollSummaryAsync();
+            var summaries = await GetCurrentPayrollSummaryAsync(customerName);
             await Task.Delay(300); // simulate external payroll API call
 
             if (!summaries.Any())
@@ -371,12 +468,104 @@ public class IntegrationService
     }
 
     // --------------------------------------------------------------------
+    // DATA QUALITY
+    // --------------------------------------------------------------------
+
+    public async Task<DataQualityViewModel> GetDataQualityAsync()
+    {
+        var logs = await GetLogsAsync();
+
+        var lastImport = logs
+            .Where(l => l.Operation == "Import")
+            .OrderByDescending(l => l.RunAt)
+            .FirstOrDefault();
+
+        int? lastInvalid = null;
+        if (lastImport?.Message != null)
+        {
+            var match = Regex.Match(lastImport.Message, @"Imported\s+\d+\s+entries,\s+(\d+)\s+invalid", RegexOptions.IgnoreCase);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out var parsed))
+            {
+                lastInvalid = parsed;
+            }
+        }
+
+        var rules = new List<string>
+        {
+            "EmployeeId must be a positive number.",
+            "Hours must be greater than 0 and less than 24.",
+            "Date must be within the current payroll period."
+        };
+
+        var mapping = "HR fields UserId, WorkDate and HoursWorked are mapped to payroll EmployeeId, Date and Hours.";
+
+        return new DataQualityViewModel
+        {
+            LastImportAt = lastImport?.RunAt,
+            LastImportInvalidCount = lastInvalid,
+            ValidationRules = rules,
+            MappingDescription = mapping
+        };
+    }
+
+    // --------------------------------------------------------------------
+    // WEATHER (Open-Meteo)
+    // --------------------------------------------------------------------
+
+    private class OpenMeteoResponse
+    {
+        public OpenMeteoCurrentWeather? current_weather { get; set; }
+    }
+
+    private class OpenMeteoCurrentWeather
+    {
+        public double temperature { get; set; }
+        public int weathercode { get; set; }
+    }
+
+    private async Task<(string Location, double Temperature, string Summary)?> FetchWeatherAsync()
+    {
+        try
+        {
+            // Oslo / Skøyen
+            var url = "https://api.open-meteo.com/v1/forecast?latitude=59.91&longitude=10.75&current_weather=true";
+            var resp = await _http.GetFromJsonAsync<OpenMeteoResponse>(url);
+            if (resp?.current_weather == null) return null;
+
+            var temp = resp.current_weather.temperature;
+            var summary = WeatherCodeToText(resp.current_weather.weathercode);
+
+            return ("Oslo (Skøyen)", temp, summary);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string WeatherCodeToText(int code) => code switch
+    {
+        0 => "Clear sky",
+        1 or 2 => "Partly cloudy",
+        3 => "Overcast",
+        45 or 48 => "Foggy",
+        51 or 53 or 55 => "Drizzle",
+        61 or 63 or 65 => "Rain",
+        71 or 73 or 75 => "Snow",
+        95 => "Thunderstorm",
+        _ => "Mixed conditions"
+    };
+
+    // --------------------------------------------------------------------
     // MANUAL ADD
     // --------------------------------------------------------------------
 
     public async Task ManualAddAsync(TimeEntry entry)
     {
         entry.Source = "Manual";
+        if (string.IsNullOrWhiteSpace(entry.CustomerName))
+            entry.CustomerName = "Manual entry";
+
         var errors = _validator.Validate(entry);
         if (errors.Any())
             throw new InvalidOperationException(string.Join("; ", errors));
@@ -393,7 +582,6 @@ public class IntegrationService
     public Task<List<IntegrationRunLog>> GetLogsAsync() =>
         _db.IntegrationRunLogs
            .OrderByDescending(l => l.RunAt)
-           .Take(50)
            .ToListAsync();
 
     private async Task AddLogAsync(string op, bool success, string? msg)

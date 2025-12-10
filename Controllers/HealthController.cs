@@ -17,7 +17,8 @@ namespace PayrollIntegrationDashboard.Controllers
         [HttpGet("/health")]
         public async Task<IActionResult> Index()
         {
-            var dashboard = await _integrationService.GetDashboardAsync();
+            // Pass null = "All customers" for the dashboard health
+            var dashboard = await _integrationService.GetDashboardAsync(null);
 
             var model = new HealthViewModel
             {
