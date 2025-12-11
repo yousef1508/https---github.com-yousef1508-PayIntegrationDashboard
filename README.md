@@ -40,8 +40,8 @@ dotnet tool install --global dotnet-ef
 
 Kjør prosjektet
 ```bash
-dotnet restore
 dotnet ef database update
+dotnet build
 dotnet run
 ```
 
