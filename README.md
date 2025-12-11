@@ -1,7 +1,7 @@
 # Payroll & HR Integration Dashboard
 ## Oversikt
 
-Dette prosjektet er et Payroll- og HR-integrasjonsdashboard bygget med ASP.NET Core (MVC). Det ble laget på 2 dager for å demonstrere evne.
+Dette prosjektet er et Payroll- og HR-integrasjonsdashboard bygget med ASP.NET Core (MVC). Det ble laget på 2 dager for å demonstrere evne. (Dette er ett eksperiment og ikke en komplett løsning)
 
 Løsningen er laget for å vise hvordan reelle lønns- og HR-integrasjoner overvåkes, valideres og driftes.
 
